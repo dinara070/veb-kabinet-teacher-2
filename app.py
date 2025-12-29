@@ -58,9 +58,9 @@ else:
 
 
 # --- КОНСТАНТИ ТА ПРАВА ДОСТУПУ ---
-ROLES_LIST = ["dean", "admin", "tech_admin"]
-TEACHER_LEVEL = ['dean', 'admin', 'tech_admin']
-DEAN_LEVEL = ['dean', 'admin', 'tech_admin']
+ROLES_LIST = ["admin", "teacher"]
+TEACHER_LEVEL = ['admin', 'teacher']
+DEAN_LEVEL = ['admin', 'teacher']
 
 # --- СПИСОК ПРЕДМЕТІВ ---
 SUBJECTS_LIST = [
@@ -272,7 +272,7 @@ def login_register_page():
     c = conn.cursor()
 
     # Повний список тех. ключів для перевірки при вході
-    ALLOWED_STAFF = ["admin", "dean", "tech_admin"]
+    ALLOWED_STAFF = ["admin", "teacher"]
 
     if action == "Вхід":
         username = st.text_input("Логін")
@@ -299,13 +299,13 @@ def login_register_page():
                 st.error("Невірний логін або пароль")
 
     elif action == "Реєстрація":
-        st.info("Реєстрація доступна для Адміністрації та Деканату.")
+        st.info("Реєстрація доступна для Адміністрації та Викладачів")
         new_user = st.text_input("Вигадайте логін")
         new_pass = st.text_input("Вигадайте пароль", type='password')
         
         # ВИДАЛЕНО 'tech_admin' зі списку вибору при реєстрації
-        # Тепер доступні лише 'admin' 'dean', 'tech_admin'
-        registration_roles = ["admin", "dean", "tech_admin"]
+        # Тепер доступні лише 'admin', 'teacher'
+        registration_roles = ["admin", "teacher"]
         role = st.selectbox("Ваша посада / Роль", registration_roles)
         
         full_name = st.text_input("Ваше ПІБ (повністю)")
