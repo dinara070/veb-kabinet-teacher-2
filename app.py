@@ -59,7 +59,7 @@ else:
 
 # --- КОНСТАНТИ ТА ПРАВА ДОСТУПУ ---
 ROLES_LIST = ["teacher"]
-TEACHER_LEVEL = ['teacher']
+TEACHER_LEVEL = ['teacher', 'admin']
 DEAN_LEVEL = ['teacher']
 
 # --- СПИСОК ПРЕДМЕТІВ ---
@@ -161,19 +161,27 @@ TEACHERS_DATA = {
 }
 
 # --- BACKEND ---
+
 def make_hashes(password):
+    """Створення хешу пароля."""
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def check_hashes(password, hashed_text):
-    if make_hashes(password) == hashed_text: return True
+    """Перевірка відповідності пароля хешу."""
+    if make_hashes(password) == hashed_text: 
+        return True
     return False
 
 def create_connection():
+    """Створення підключення до бази даних SQLite."""
     return sqlite3.connect('university_v22.db', check_same_thread=False)
 
 def init_db():
+    """Ініціалізація структури бази даних."""
     conn = create_connection()
     c = conn.cursor()
+    
+    # --- БАЗОВІ ТАБЛИЦІ ---
     c.execute('''CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY, password TEXT, role TEXT, full_name TEXT, group_link TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS students(id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT, group_name TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS schedule(id INTEGER PRIMARY KEY AUTOINCREMENT, group_name TEXT, day TEXT, time TEXT, subject TEXT, teacher TEXT)''')
@@ -186,81 +194,144 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS scholarship(id INTEGER PRIMARY KEY AUTOINCREMENT, student_name TEXT, type TEXT, amount INTEGER, status TEXT, date_assigned TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS system_logs(id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, action TEXT, details TEXT, timestamp TEXT)''')
     
-    # --- ТАБЛИЦІ DЛЯ АНКЕТИ ТА КОНТРАКТІВ ---
+    # --- ТАБЛИЦІ ДЛЯ АНКЕТИ ТА КОНТРАКТІВ ---
     c.execute('''CREATE TABLE IF NOT EXISTS student_education_info(
-        student_name TEXT PRIMARY KEY,
-        status TEXT, study_form TEXT, course INTEGER, is_contract TEXT,
-        faculty TEXT, specialty TEXT, edu_program TEXT,
-        referral_type TEXT, enterprise TEXT,
+        student_name TEXT PRIMARY KEY, status TEXT, study_form TEXT, course INTEGER, is_contract TEXT,
+        faculty TEXT, specialty TEXT, edu_program TEXT, referral_type TEXT, enterprise TEXT,
         enroll_protocol_num TEXT, enroll_order_num TEXT, enroll_condition TEXT,
         enroll_protocol_date TEXT, enroll_order_date TEXT, enroll_date TEXT,
         grad_order_num TEXT, grad_order_date TEXT, grad_date TEXT,
-        student_id_card TEXT, gradebook_id TEXT, library_card TEXT,
-        curator TEXT, last_modified TEXT
+        student_id_card TEXT, gradebook_id TEXT, library_card TEXT, curator TEXT, last_modified TEXT
     )''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS student_prev_education(
-        student_name TEXT PRIMARY KEY,
-        institution_name TEXT, institution_type TEXT,
+        student_name TEXT PRIMARY KEY, institution_name TEXT, institution_type TEXT,
         diploma_type TEXT, diploma_series TEXT, diploma_number TEXT,
-        diploma_grades_summary TEXT, foreign_languages TEXT,
-        last_modified TEXT
+        diploma_grades_summary TEXT, foreign_languages TEXT, last_modified TEXT
     )''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS academic_certificates(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_name TEXT, cert_number TEXT, issue_date TEXT,
-        source_institution TEXT, notes TEXT,
-        added_by TEXT, added_date TEXT
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_name TEXT, cert_number TEXT, issue_date TEXT,
+        source_institution TEXT, notes TEXT, added_by TEXT, added_date TEXT
     )''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS individual_statements(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_name TEXT, subject TEXT, statement_type TEXT,
-        reason TEXT, date_issued TEXT, status TEXT,
-        created_by TEXT
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_name TEXT, subject TEXT, statement_type TEXT,
+        reason TEXT, date_issued TEXT, status TEXT, created_by TEXT
     )''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS student_contracts(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_name TEXT,
-        contract_number TEXT,
-        date_signed TEXT,
-        end_date TEXT,
-        total_amount REAL,
-        paid_amount REAL,
-        payment_status TEXT,
-        notes TEXT
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_name TEXT, contract_number TEXT,
+        date_signed TEXT, end_date TEXT, total_amount REAL, paid_amount REAL,
+        payment_status TEXT, notes TEXT
     )''')
 
-    # --- НОВА ТАБЛИЦЯ: ЕКЗАМЕНАЦІЙНІ ВІDОМОСТІ (СЕСІЯ) ---
+    # --- ТАБЛИЦІ СЕСІЇ ТА ПЕРЕЗДАЧ ---
     c.execute('''CREATE TABLE IF NOT EXISTS exam_sheets(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sheet_number TEXT,
-        group_name TEXT,
-        subject TEXT,
-        control_type TEXT,
-        exam_date TEXT,
-        examiner TEXT,
-        status TEXT
+        id INTEGER PRIMARY KEY AUTOINCREMENT, sheet_number TEXT, group_name TEXT,
+        subject TEXT, control_type TEXT, exam_date TEXT, examiner TEXT, status TEXT
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS retakes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_name TEXT, group_name TEXT,
+        subject TEXT, reason TEXT, added_by TEXT, date_added TEXT
     )''')
 
     conn.commit()
 
+    # Початкове заповнення (якщо база порожня)
     c.execute('SELECT count(*) FROM students')
     if c.fetchone()[0] == 0:
-        c.execute('INSERT OR IGNORE INTO users VALUES (?,?,?,?,?)', ('admin', make_hashes('admin'), 'admin', 'Головний Адміністратор', ''))
-        for group, names in GROUPS_DATA.items():
-            for name in names:
-                clean_name = name.lstrip("0123456789. ")
-                c.execute('INSERT INTO students (full_name, group_name) VALUES (?,?)', (clean_name, group))
+        c.execute('INSERT OR IGNORE INTO users VALUES (?,?,?,?,?)', 
+                 ('admin', make_hashes('admin'), 'admin', 'Головний Адміністратор', ''))
+        
+        if 'GROUPS_DATA' in globals():
+            for group, names in GROUPS_DATA.items():
+                for name in names:
+                    clean_name = name.lstrip("0123456789. ")
+                    c.execute('INSERT INTO students (full_name, group_name) VALUES (?,?)', (clean_name, group))
         conn.commit()
+        
     return conn
 
 def log_action(user, action, details):
+    """Запис дій користувача у системний лог."""
     conn = create_connection()
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute("INSERT INTO system_logs (user, action, details, timestamp) VALUES (?,?,?,?)", (user, action, details, ts))
+    conn.execute("INSERT INTO system_logs (user, action, details, timestamp) VALUES (?,?,?,?)", 
+                 (user, action, details, ts))
     conn.commit()
 
 def convert_df_to_csv(df):
+    """Конвертація DataFrame у CSV для скачування."""
     return df.to_csv(index=False).encode('utf-8-sig')
+
+# --- ФУНКЦІЇ ДЛЯ ПЕРЕЗДАЧ ---
+
+def retakes_management_view():
+    """Інтерфейс керування перездачами."""
+    st.subheader("🔄 Керування відомостями на перездачу")
+    conn = create_connection()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        group_sel = st.selectbox("Оберіть групу", list(GROUPS_DATA.keys()), key="ret_grp")
+    with col2:
+        subject_sel = st.selectbox("Оберіть предмет", SUBJECTS_LIST, key="ret_subj")
+
+    # Перевірка наявності екзаменаційної відомості
+    sheet = pd.read_sql_query(
+        f"SELECT * FROM exam_sheets WHERE group_name='{group_sel}' AND subject='{subject_sel}'", conn
+    )
+
+    if sheet.empty:
+        st.warning(f"⚠️ Відомість на перездачу для групи {group_sel} з предмета '{subject_sel}' ще не відкрита адміністрацією. Відправка на перездачу неможлива.")
+    else:
+        st.success(f"✅ Відомість №{sheet.iloc[0]['sheet_number']} знайдена. Ви можете керувати списком.")
+        
+        with st.expander("➕ Відправити студента на перездачу"):
+            st_df = pd.read_sql(f"SELECT full_name FROM students WHERE group_name='{group_sel}'", conn)
+            if not st_df.empty:
+                selected_student = st.selectbox("Студент", st_df['full_name'].tolist())
+                reason = st.text_input("Причина (напр. 'Незадовільно' або 'Неявка')")
+                
+                if st.button("Підтвердити відправку"):
+                    # Перевірка чи вже є у списку
+                    check = pd.read_sql(
+                        f"SELECT * FROM retakes WHERE student_name='{selected_student}' AND subject='{subject_sel}'", conn
+                    )
+                    if check.empty:
+                        conn.execute(
+                            "INSERT INTO retakes (student_name, group_name, subject, reason, added_by, date_added) VALUES (?,?,?,?,?,?)",
+                            (selected_student, group_sel, subject_sel, reason, st.session_state['full_name'], str(datetime.now().date()))
+                        )
+                        conn.commit()
+                        st.success(f"Студента {selected_student} додано до відомості на перездачу.")
+                        st.rerun()
+                    else:
+                        st.error("Студент вже перебуває у цій відомості.")
+            else:
+                st.info("У цій групі немає студентів.")
+
+    st.divider()
+    st.write("### 📋 Поточний список на перездачу")
+    retakes_df = pd.read_sql_query(
+        f"SELECT id, student_name, group_name, subject, reason, date_added FROM retakes WHERE group_name='{group_sel}' AND subject='{subject_sel}'", conn
+    )
+    
+    if not retakes_df.empty:
+        for idx, row in retakes_df.iterrows():
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([3, 2, 1])
+                c1.write(f"👤 **{row['student_name']}**")
+                c2.write(f"📝 {row['reason']}")
+                if c3.button("Видалити з перездачі 🗑️", key=f"del_{row['id']}"):
+                    conn.execute(f"DELETE FROM retakes WHERE id={row['id']}")
+                    conn.commit()
+                    st.toast(f"Студента видалено з відомості")
+                    st.rerun()
+    else:
+        st.info("Наразі список перездач порожній для обраних фільтрів.")
 
 # --- СТОРІНКИ ---
 
